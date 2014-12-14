@@ -1,44 +1,60 @@
 # Reproducible Research: Peer Assessment 1
----
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
----
-
 
 ## Loading and preprocessing the data
+### 1. Load the data 
+### 2. Process/transform the data
+At the end of this code block, I will have two datasets: one that has all the data and one that only has the complete cases, i.e. the rows where "steps" has a value.
 
 ```r
 # Unzip and read the data. The zip file that is unzipped here is in the same directory as this Rmd file.
 data <- read.csv(unz("activity.zip", "activity.csv"), na.strings="NA", stringsAsFactors=FALSE)
-stepdata <- subset(data, !is.na(data$steps))
+
+# A small (and not very pretty) function to zero-pad the intervals, for easier converting to POSIXlt objects.
+padWithZeroes <- function(str) {
+        zeroes <- c("0", "00", "000")
+        if(nchar(str) < 4) {
+                paste(zeroes[4 - nchar(str)], str, sep="")
+        }
+        else {
+                str
+        }
+}
+
+# Converting the intervals to something that looks more acceptable. For the padWithZeroes function, see the end of this document.
+data$interval <- sapply(as.character(data[,"interval"]), padWithZeroes)
+data$interval <- format(strptime(data[,"interval"], "%H%M"), "%H:%M")
+stepdata <- subset(data, !is.na(steps))
 ```
 
 ## What is mean total number of steps taken per day?
-The following histogram shows the total number of steps taken each day. We ignore the missing values in the dataset.
+### 1. Make a histogram of the total number of steps taken each day
+The following histogram shows the total number of steps taken each day. The rows where "steps" is NA were ignored.
 
 ```r
-totals <- sapply(split(stepdata$steps, stepdata$date, drop=TRUE), sum)
-hist(x=totals)
+# Using the lattice plotting system for the histograms.
+library(lattice)
+totals <- sapply(split(stepdata$steps, stepdata$date), sum)
+histogram(totals)
 ```
 
 ![plot of chunk unnamed-chunk-2](figure/unnamed-chunk-2-1.png) 
 
-The mean total number of steps taken per day:
+### 2. Calculate and report the mean and median total number of steps taken per day.
+
+The mean total number of steps taken per day is:
 
 ```r
-mean(totals)
+round(mean(totals), 0)
 ```
 
 ```
-## [1] 10766.19
+## [1] 10766
 ```
 
-The median total number of steps taken per day:
+The median total number of steps taken per day is: 
 
 ```r
-median(totals)
+round(median(totals), 0)
 ```
 
 ```
@@ -46,77 +62,108 @@ median(totals)
 ```
 
 ## What is the average daily activity pattern?
-The following plot shows the 5-minute interval and the average number of steps taken, averaged across all days. In other words: the average across all days for each time interval
+### 1. Make a time series plot of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all days (y-axis)
+
+The following plot shows the 5-minute interval and the average number of steps taken, averaged across all days. In other words: the average across all days for each time interval.
+
 
 ```r
-avgs <- sapply(split(stepdata$steps, stepdata$interval, drop=TRUE), mean)
-plot(avgs, type="n", xlab="time intervals", ylab="avg steps", main="", xaxt="n")         
-lines(avgs, type="l")
-
-# not sure if this is part of the assignment but I think I will make some nice x axis labels
-times <- seq(from=strptime("00:00", "%H:%M"), to=strptime("23:55", "%H:%M"), by="2 hours")
-times <- sapply(times, strftime, "%H:%M")
-labelpoints <- seq(from=0, to=264, by=288/12)
-axis(1, labels=times, at=labelpoints, las=3)
+avgs <- data.frame("average"=sapply(split(stepdata$steps, stepdata$interval), mean),
+                   "time"=stepdata$interval[1:288])
+plot(x=avgs$time, y=avgs$average, type="l", main="average daily activity pattern", xaxt="n", 
+     xlab="Time intervals", ylab="Average number of steps")
+lines(avgs$average)
+labelpoints <- seq(from=1, to=288, by=288/12)
+timelabels <- stepdata[labelpoints, "interval"]
+axis(1, labels=timelabels, at=labelpoints, las=3)
 ```
 
 ![plot of chunk unnamed-chunk-5](figure/unnamed-chunk-5-1.png) 
 
-## Imputing missing values
-Note that there are a number of days/intervals where there are missing values (coded as NA). The presence of missing days may introduce bias into some calculations or summaries of the data.
+We can see there is generally a lot of activity in the morning, between 8:00 and 10:00 am.
 
-The total number of missing values in the dataset:
+### 2. Which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps?
+
+The 5-minute interval that contains the highest average number of steps across all days is this one:
+
 
 ```r
-missing <- subset(data, is.na(data$steps))
-nrow(missing)
+avgs[avgs$average == max(avgs$average),]
+```
+
+```
+##        average  time
+## 08:35 206.1698 08:35
+```
+
+
+## Imputing missing values
+Note that there are a number of days/intervals where there are missing values (coded as NA). The presence of missing days may introduce bias into some calculations or summaries of the data.
+### 1. Calculate and report the total number of missing values in the dataset (i.e. the total number of rows with NAs)
+
+The total number of missing values in the dataset is:
+
+
+```r
+nrow(data) - nrow(stepdata)
 ```
 
 ```
 ## [1] 2304
 ```
 
+### 2. Devise a strategy for filling in all of the missing values in the dataset. 
+### 3. Create a new dataset that is equal to the original dataset but with the missing data filled in.
+
 We will create a new dataset that is equal to the original dataset but with the missing data filled in. 
 We will replace the missing value with the mean for that 5-minute interval.
+
 
 ```r
 for (i in seq_len(nrow(data))) {
         if (is.na(data[i, 1])) {
                 index <- ifelse(i %% 288 > 0, i %% 288, 288)
-                data[i,] <- c(avgs[index], data[i, 2], data[i, 3])
+                data[i,] <- c(avgs[index, "average"], data[i, 2], data[i, 3])
         }
 }
 ```
 
+### 4. Make a histogram of the total number of steps taken each day
+
 The following histogram shows the total number of steps taken each day, with the missing values replaced by the means for their intervals. 
+
 
 ```r
 data$steps  <- as.numeric(data$steps)
-totals <- sapply(split(data$steps, data$date, drop=TRUE), sum)
-hist(x=totals)
+totals <- sapply(split(data$steps, data$date), sum)
+histogram(totals)
 ```
 
-![plot of chunk unnamed-chunk-8](figure/unnamed-chunk-8-1.png) 
+![plot of chunk unnamed-chunk-9](figure/unnamed-chunk-9-1.png) 
 
-The mean total number of steps taken per day. 
+### Calculate and report the mean and median total number of steps taken per day
 
-```r
-mean(totals)
-```
-
-```
-## [1] 10766.19
-```
-
-The median total number of steps taken per day. 
+After imputing the missing values, the mean total number of steps taken per day is:
 
 ```r
-median(totals)
+round(mean(totals), 0)
 ```
 
 ```
-## [1] 10766.19
+## [1] 10766
 ```
+
+After imputing the missing values, the median total number of steps taken per day is:
+
+```r
+round(median(totals), 0)
+```
+
+```
+## [1] 10766
+```
+
+We can see that imputing the missing values has had very little impact!
 
 ## Are there differences in activity patterns between weekdays and weekends?
 
@@ -136,13 +183,16 @@ par(mfrow = c(2, 1))
 steps <- split(data, data$wd)
 # top
 avgsteps <- sapply(split(steps$weekend$steps, steps$weekend$interval), mean)
-plot(avgsteps, type="n", xlab="time intervals", ylab="avg steps", main="weekend")         
+plot(avgsteps, type="n", xlab="time intervals", ylab="avg steps", main="weekend", col="red", xaxt="n")         
 lines(avgsteps, type="l")
+axis(1, labels=timelabels, at=labelpoints, las=3)
 
 # bottom
 avgsteps <- sapply(split(steps$weekday$steps, steps$weekday$interval), mean)
-plot(avgsteps, type="n", xlab="time intervals", ylab="avg steps", main="weekdays")         
+plot(avgsteps, type="n", xlab="time intervals", ylab="avg steps", main="weekdays", col="blue", xaxt="n")         
 lines(avgsteps, type="l")
+axis(1, labels=timelabels, at=labelpoints, las=3)
 ```
 
-![plot of chunk unnamed-chunk-11](figure/unnamed-chunk-11-1.png) 
+![plot of chunk unnamed-chunk-12](figure/unnamed-chunk-12-1.png) 
+
